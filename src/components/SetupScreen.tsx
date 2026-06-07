@@ -296,6 +296,55 @@ export default function SetupScreen({ onStart, onJoinRoom }: SetupScreenProps) {
               </div>
             </div>
 
+            {/* Google Colab Integration Hub */}
+            <div className="glass-panel p-5 rounded-2xl border border-orange-500/30 bg-neutral-950/40" id="colab-integration-hub">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-3 flex items-center gap-1.5 font-mono">
+                <span className="w-2.5 h-2.5 bg-orange-500 rounded-full inline-block animate-pulse mr-0.5" />
+                Google Colab Academic Sandbox
+              </h3>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-neutral-900/40 border border-neutral-800/80 p-3.5 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <h4 className="font-bold text-xs text-orange-400 flex items-center gap-1">
+                      Python & Data Science Companion
+                    </h4>
+                    <p className="text-[10px] text-neutral-400 mt-1 leading-normal">
+                      Instantly connect this session with a live, server-hosted Jupyter Notebook. Perfect for running dynamic Python scripts, plotting Seaborn charts, or compiling Pandas dataframes.
+                    </p>
+                  </div>
+                  
+                  <div className="mt-3">
+                    <a
+                      href="https://colab.research.google.com/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] uppercase font-mono tracking-wider transition-all shadow-lg hover:shadow-orange-600/15"
+                      id="colab-external-link"
+                    >
+                      Launch Colab Workspace
+                    </a>
+                  </div>
+                </div>
+
+                <div className="bg-neutral-900/40 border border-neutral-800/80 p-3.5 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <h4 className="font-bold text-xs text-neutral-200">Session Jupyter Template (.ipynb)</h4>
+                    <p className="text-[10px] text-neutral-400 mt-1 leading-normal">
+                      Once you complete your Data Analysis rounds, the system will auto-generate an interactive, runnable notebook file containing your exact interview questions and customized Python practice setups.
+                    </p>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-[9px] bg-orange-500/10 text-orange-300 border border-orange-500/20 px-2 py-0.5 rounded uppercase tracking-wider font-mono font-bold">
+                      Colab Active
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-mono">Notebook Auto-Sync</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
 

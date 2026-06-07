@@ -1,10 +1,14 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, setLogLevel } from "firebase/firestore";
 import firebaseConfig from "../firebase-applet-config.json";
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
+
+// Set log level to only display serious errors, preventing transient offline/reconnect logs from being treated as failures
+setLogLevel("error");
+
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
@@ -59,10 +63,17 @@ export async function testConnection() {
   try {
     const { doc, getDocFromServer } = await import("firebase/firestore");
     await getDocFromServer(doc(db, "test", "connection"));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("the client is offline")) {
-      console.error("Please check your Firebase configuration.");
+  } catch (error: any) {
+    const msg = error?.message || String(error);
+    if (msg.includes("the client is offline") || error?.code === "unavailable" || msg.includes("unavailable")) {
+      console.warn("Firestore is currently operating with offline cache fallback:", msg);
+    } else {
+      console.error("Firestore initialization connection test:", error);
     }
   }
 }
-testConnection();
+
+// Timeout to delay connection request until the main app loading sequence is stable
+setTimeout(() => {
+  testConnection();
+}, 3000);

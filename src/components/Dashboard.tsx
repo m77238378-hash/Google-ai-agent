@@ -90,6 +90,218 @@ export default function Dashboard({ history, difficulty, topic, onRestart }: Das
 
   const isDataAnalysis = topic && topic.toLowerCase().includes("data analysis");
 
+  const handleExportColabNotebook = () => {
+    // Construct dynamic cells for Jupyter Notebook (.ipynb)
+    const cells = [];
+    
+    // Welcome and overview
+    cells.push({
+      cell_type: "markdown",
+      metadata: {},
+      source: [
+        `# 🎓 Google Colab & AI Arena Academic Companion\n`,
+        `### Topic Workspace: **${topic || "Data Analysis"}** | Target: **${difficulty} Level**\n`,
+        `This companion notebook was auto-synthesized by the Google AI Studio agent. It compiles your practice record, identifies revision areas, and populates live practice templates to run directly in Google Colab.\n\n`,
+        `---\n\n`,
+        `## 📊 PERFORMANCE CARD & DIAGNOSTICS\n`,
+        `- **Cumulative Score:** \`${averageScore}/100\`\n`,
+        `- **Assessed Level:** \`${rank.title}\`\n`,
+        `- **Study Focus:** ${allMissedConcepts.length > 0 ? allMissedConcepts.join(', ') : 'Maintain outstanding performance'}\n\n`,
+        `*Recommended practice directions are pre-baked in the cells below. Run them using Google Colab's standard cell executor (Shift + Enter).*`
+      ]
+    });
+
+    // Gap analysis
+    cells.push({
+      cell_type: "markdown",
+      metadata: {},
+      source: [
+        `## 💡 DETECTED GAP ANALYSIS\n`,
+        allMissedConcepts.length > 0 
+          ? allMissedConcepts.map(c => `* **Revision topic:** \`${c}\` - Study core syntax, boundary rules, and optimization limits.`).join('\n')
+          : `* Outstanding recall! No significant memory gaps detected. Great work.\n`,
+        `\n## 🔥 CORE STRENGTHS SHOWN\n`,
+        allStrengths.length > 0
+          ? allStrengths.map(s => `* **Key Strength:** \`${s}\` - Great conceptual demonstration.`).join('\n')
+          : `* Good efforts overall across all scoring rounds.`
+      ]
+    });
+
+    // Transcript Q&A
+    const historyMarkdown = [
+      `## 📜 DETAILED SESSION TRANSCRIPT\n`,
+      `Below is the complete transcript of questions from your assessment session.\n\n`
+    ];
+    history.forEach((h, idx) => {
+      historyMarkdown.push(
+        `### Round ${idx + 1}: ${h.question}\n`,
+        `* **Your Response:** _${h.candidateAnswer}_\n`,
+        `* **Evaluator Grade:** \`${h.evaluation?.score || 0}/100\`\n`,
+        `* **Feedback:** ${h.evaluation?.detailedFeedback || "No feedback provided"}\n\n`
+      );
+    });
+    
+    cells.push({
+      cell_type: "markdown",
+      metadata: {},
+      source: historyMarkdown
+    });
+
+    // Executable code cells based on theme
+    if (isDataAnalysis) {
+      cells.push({
+        cell_type: "markdown",
+        metadata: {},
+        source: [
+          `## 🧪 INTERACTIVE PYTHON DRILLS (PANDAS & AGGREGATIONS)\n`,
+          `Run this block in Google Colab to initialize a mock dataset resembling the topics reviewed. This uses standard pandas, numpy, and matplotlib layouts.`
+        ]
+      });
+
+      cells.push({
+        cell_type: "code",
+        execution_count: null,
+        metadata: {},
+        outputs: [],
+        source: [
+          `import numpy as np\n`,
+          `import pandas as pd\n`,
+          `import matplotlib.pyplot as plt\n`,
+          `import seaborn as sns\n\n`,
+          `# Set design style\n`,
+          `sns.set_theme(style="darkgrid")\n\n`,
+          `# 1. Custom Dataset Initialization\n`,
+          `print("Initializing practice dataframe...")\n`,
+          `data = {\n`,
+          `    "Student_ID": [f"STU_{i:03d}" for i in range(1, 101)],\n`,
+          `    "Assessed_Domain": np.random.choice(["Pandas Aggregates", "Data Cleansing", "Regression", "Seaborn Plots"], 100),\n`,
+          `    "Trial_Score": np.random.randint(45, 100, 100),\n`,
+          `    "Completed_Hours": np.random.uniform(5.0, 45.0, 100)\n`,
+          `}\n`,
+          `df = pd.DataFrame(data)\n`,
+          `df.head()`
+        ]
+      });
+
+      cells.push({
+        cell_type: "markdown",
+        metadata: {},
+        source: [
+          `### 📈 Exercise 1: Clean and Group Scores\n`,
+          `Complete this block to find the mean trial coordinates group-by domain and filter students scored above threshold.`
+        ]
+      });
+
+      cells.push({
+        cell_type: "code",
+        execution_count: null,
+        metadata: {},
+        outputs: [],
+        source: [
+          `# Group by Assessed_Domain and show mean score and average hours spent\n`,
+          `summary = df.groupby("Assessed_Domain").agg({\n`,
+          `    "Trial_Score": ["mean", "count"],\n`,
+          `    "Completed_Hours": "mean"\n`,
+          `})\n`,
+          `print(summary)\n\n`,
+          `# Filter records where practice score < 70 for key revisions\n`,
+          `gaps_df = df[df["Trial_Score"] < 70]\n`,
+          `print(f"Detected {len(gaps_df)} students needing support.")`
+        ]
+      });
+
+      cells.push({
+        cell_type: "markdown",
+        metadata: {},
+        source: [
+          `### 📊 Exercise 2: Visualizing Heuristics with Seaborn\n`,
+          `Render a beautiful distribution plot to visualize the relation between Completed Hours and Student Target Scores.`
+        ]
+      });
+
+      cells.push({
+        cell_type: "code",
+        execution_count: null,
+        metadata: {},
+        outputs: [],
+        source: [
+          `plt.figure(figsize=(10, 6))\n`,
+          `sns.scatterplot(data=df, x="Completed_Hours", y="Trial_Score", hue="Assessed_Domain", style="Assessed_Domain", s=100)\n`,
+          `plt.title("Study Effort vs. AI Assessment Performance", fontsize=14, fontweight="bold")\n`,
+          `plt.xlabel("Practice Hours Completed", fontsize=12)\n`,
+          `plt.ylabel("Session Rating Score", fontsize=12)\n`,
+          `plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')\n`,
+          `plt.tight_layout()\n`,
+          `plt.show()`
+        ]
+      });
+    } else {
+      cells.push({
+        cell_type: "markdown",
+        metadata: {},
+        source: [
+          `## 🧪 INTERACTIVE PROGRAMMING SANDBOX\n`,
+          `This code block offers structured practice drills to verify your technical code execution outside the speech sandbox.`
+        ]
+      });
+
+      cells.push({
+        cell_type: "code",
+        execution_count: null,
+        metadata: {},
+        outputs: [],
+        source: [
+          `// Kotlin Core Revision Playground\n`,
+          `// Practice: Implement custom state buffers or lifecycle handling routines\n`,
+          `fun main() {\n`,
+          `    println("Preparing practice sandbox...")\n`,
+          `    val revisedTopics = listOf(${allMissedConcepts.map(c => `"${c}"`).join(', ')})\n`,
+          `    println("Core Focus Gaps: \$revisedTopics")\n`,
+          `}`
+        ]
+      });
+    }
+
+    // Connect instructions
+    cells.push({
+      cell_type: "markdown",
+      metadata: {},
+      source: [
+        `### 🛠️ GOOGLE COLAB LAUNCH GUIDE\n`,
+        `1. Open [Google Colab](https://colab.research.google.com/)\n`,
+        `2. Click on the **Upload** partition tab\n`,
+        `3. Choose your downloaded \`ai_arena_colab_companion.ipynb\`\n`,
+        `4. Select **Connect** in Colab's top right header, and execute the interactive sandboxes!`
+      ]
+    });
+
+    const ipynb = {
+      cells,
+      metadata: {
+        kernelspec: {
+          display_name: "Python 3 (ipykernel)",
+          language: "python",
+          name: "python3"
+        },
+        language_info: {
+          name: "python"
+        }
+      },
+      nbformat: 4,
+      nbformat_minor: 2
+    };
+
+    const blob = new Blob([JSON.stringify(ipynb, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ai_arena_${(topic || "session").toLowerCase().replace(/\s+/g, "_")}_colab.ipynb`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   // Compute stats
   const gradedRounds = history.filter(item => item.evaluation);
   const totalRounds = history.length;
@@ -815,6 +1027,56 @@ Try out the AI Arena yourself to train your voice response memory and master Jet
             <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-850 font-mono text-[10px] text-neutral-300 select-all leading-normal">
               android, jetpack compose, kotlin flow, android tech interview, coding mockup, @OnlineYou-z3i1n, ai arena, android developer interview, study program
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* GOOGLE COLAB INTERACTIVE NOTEBOOK EXPORT HUB */}
+      <div className="glass-panel p-6 rounded-3xl mt-12 bg-gradient-to-r from-orange-950/20 via-neutral-900 to-amber-950/20 border border-orange-500/15 animate-fade-in" id="colab-export-studio-panel">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-900 pb-4 mb-5">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 bg-orange-500 rounded-full inline-block animate-pulse shrink-0" />
+            <div>
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                Google Colab Academic Notebook Workspace
+              </h3>
+              <p className="text-[10px] text-neutral-400 font-mono mt-0.5">
+                EXECUTE LIVE PRACTICE DRILLS & CODE SANDBOXES SIDE-BY-SIDE WITH COLLABORATORS
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] uppercase font-mono bg-orange-500/10 text-orange-300 border border-orange-500/20 px-2.5 py-0.5 rounded-full font-bold">
+            Interactive Jupyter Export Ready
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+          <div className="md:col-span-2 space-y-3">
+            <p className="text-xs text-neutral-400 leading-relaxed">
+              Based on your session performance in the <strong className="text-neutral-200">{topic || "learning track"}</strong>, we have constructed a customized <strong className="text-orange-400">Jupyter Notebook (.ipynb)</strong> specifically optimized for Google Colab sandbox environments.
+            </p>
+            <p className="text-xs text-neutral-400 leading-relaxed">
+              This notebook automatically imports your entire session scorecard, missed conceptual keywords, and generates <strong className="text-teal-400">fully runnable code cells</strong> (with pandas datasets, statistical plots, or system handlers) to practice your syntax live under a containerized interpreter!
+            </p>
+          </div>
+          <div className="flex flex-col gap-2.5 justify-center md:items-end">
+            <button
+              onClick={handleExportColabNotebook}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold px-5 py-3 rounded-xl text-xs uppercase font-mono tracking-wider transition-all shadow-md hover:shadow-orange-500/10 cursor-pointer"
+              id="download-colab-notebook-btn"
+            >
+              <FileText className="w-4 h-4" />
+              Download Jupyter Notebook (.ipynb)
+            </button>
+            <a
+              href="https://colab.research.google.com/"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[11px] font-semibold text-neutral-400 hover:text-white inline-flex items-center gap-1 hover:underline justify-center md:justify-end"
+            >
+              Open colab.research.google.com
+              <ExternalLink className="w-3 h-3 text-orange-400" />
+            </a>
           </div>
         </div>
       </div>
