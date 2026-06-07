@@ -1,0 +1,6 @@
+{
+  "name": "Android AI Interview Agent",
+  "description": "An interactive speech-enabled technical interview coach for Android Developers, providing real-time transcription and instant diagnostic feedback using Gemini.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
