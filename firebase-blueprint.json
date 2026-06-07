@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Profile details of a student or developer using Android AI Arena",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Google UID of the user" },
+        "displayName": { "type": "string", "description": "The user's Google display name" },
+        "email": { "type": "string", "description": "The user's verified Google email address" },
+        "photoURL": { "type": "string", "description": "Google photo URL" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Profile generation timing" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Profile last change timing" }
+      },
+      "required": ["uid", "displayName", "email", "createdAt", "updatedAt"]
+    },
+    "Session": {
+      "title": "Interview Session",
+      "description": "An interactive AI-guided practice interview session with scores, feedback, and transcripts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the interview session" },
+        "userId": { "type": "string", "description": "UID of the candidate user who completed this session" },
+        "topic": { "type": "string", "description": "The custom academic or platform topic" },
+        "difficulty": { "type": "string", "description": "Skill tier selector (Junior, Mid-Level, Senior)" },
+        "interviewerId": { "type": "string", "description": "Identifier of the simulated interviewer persona" },
+        "roundsCount": { "type": "number", "description": "Expected interview length in rounds" },
+        "status": { "type": "string", "enum": ["SETUP", "INTERVIEWING", "EVALUATING", "COMPLETED"], "description": "Current state machine flag" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last updated timestamp" },
+        "history": {
+          "type": "array",
+          "description": "Array of question/answer history entries representing the rounds"
+        }
+      },
+      "required": ["id", "userId", "topic", "difficulty", "interviewerId", "roundsCount", "status", "createdAt", "updatedAt", "history"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection partitioned by Google UID"
+    },
+    "/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Interview session logs owned by users"
+    }
+  }
+}

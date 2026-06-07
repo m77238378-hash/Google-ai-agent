@@ -76,5 +76,12 @@ export const INTERVIEW_TOPICS: InterviewTopic[] = [
     icon: "Activity",
     description: "Tracking over-draw, finding memory leaks with LeakCanary, baseline profiles, background heap dumps, custom analytics, and startup times.",
     difficultyLevels: ["Junior", "Mid-Level", "Senior"]
+  },
+  {
+    id: "data_analysis",
+    title: "Data Analysis & Python (Beginner/Student)",
+    icon: "BarChart",
+    description: "Jupyter notebooks, python arrays/lists, dataset cleansing with pandas/numpy, seaborn plots, regression heuristics, and modeling data trends.",
+    difficultyLevels: ["Junior", "Mid-Level", "Senior"]
   }
 ];

@@ -18,7 +18,10 @@ import {
   Share2, 
   ExternalLink,
   Code2,
-  Sparkles
+  Sparkles,
+  Youtube,
+  Copy,
+  Check
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -29,48 +32,63 @@ interface DashboardProps {
   onRestart: () => void;
 }
 
-const getCategoryBadgeStyles = (category: string) => {
+const getCategoryBadgeStyles = (category: string, isDataAnalysis: boolean = false) => {
   switch (category) {
     case "Behavioral":
       return { 
         bg: "bg-blue-500/10 text-blue-300 border-blue-500/20", 
         accentClass: "bg-blue-500",
         label: "Behavioral",
-        desc: "Evaluates teamwork dynamics, personal conflict resolution, scope pressure, and cross-functional design discussions."
+        desc: isDataAnalysis 
+          ? "Evaluates team assignments, data presentation, conveying metrics to stakeholders, and muddy dataset cleaning."
+          : "Evaluates teamwork dynamics, personal conflict resolution, scope pressure, and cross-functional design discussions."
       };
     case "Technical":
       return { 
         bg: "bg-purple-500/10 text-purple-300 border-purple-500/20", 
         accentClass: "bg-purple-500",
         label: "Technical",
-        desc: "Assesses thread-safety logic, memory footprint optimizations, stable compiler parameters, and API layout mechanics."
+        desc: isDataAnalysis 
+          ? "Assesses Python syntax, data cleaning pipelines, pandas/numpy runtimes, dataframe manipulations, and aggregations."
+          : "Assesses thread-safety logic, memory footprint optimizations, stable compiler parameters, and API layout mechanics."
       };
     case "Situational":
       return { 
         bg: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", 
         accentClass: "bg-emerald-500",
         label: "Situational",
-        desc: "Tests step-by-step diagnostic triage under hypotheticals, real-world regression crises, and live systems debugging."
+        desc: isDataAnalysis 
+          ? "Tests problem diagnostics (missing values, mismatched shapes, non-linear variables) and live script errors."
+          : "Tests step-by-step diagnostic triage under hypotheticals, real-world regression crises, and live systems debugging."
       };
     case "Role-Specific":
       return { 
         bg: "bg-amber-500/10 text-amber-300 border-amber-500/20", 
         accentClass: "bg-amber-500",
-        label: "Role-Specific",
-        desc: "Gauges platform-native Android OS contracts, WorkManager job restrictions, active Jetpack state scopes, and UI touch specs."
+        label: "Domain-Specific",
+        desc: isDataAnalysis 
+          ? "Gauges Jupyter state mechanics, visualization library selection (Matplotlib/Seaborn), and baseline statistical models."
+          : "Gauges platform-native Android OS contracts, WorkManager job restrictions, active Jetpack state scopes, and UI touch specs."
       };
     default:
       return { 
         bg: "bg-teal-500/10 text-teal-300 border-teal-500/20", 
         accentClass: "bg-teal-500",
         label: "General Focus",
-        desc: "Standard Android systems analysis focus areas."
+        desc: isDataAnalysis 
+          ? "Standard student-oriented exploratory data analysis and data science methods focus areas."
+          : "Standard Android systems analysis focus areas."
       };
   }
 };
 
 export default function Dashboard({ history, difficulty, topic, onRestart }: DashboardProps) {
   const [expandedRound, setExpandedRound] = useState<number | null>(0);
+  const [copiedTitle, setCopiedTitle] = useState(false);
+  const [copiedDesc, setCopiedDesc] = useState(false);
+  const [copiedTags, setCopiedTags] = useState(false);
+
+  const isDataAnalysis = topic && topic.toLowerCase().includes("data analysis");
 
   // Compute stats
   const gradedRounds = history.filter(item => item.evaluation);
@@ -117,14 +135,20 @@ export default function Dashboard({ history, difficulty, topic, onRestart }: Das
   );
 
   // Determine overall rank
-  const getSeniorityRank = (score: number) => {
+  const getSeniorityRank = (score: number, isDataAnalysisMode: boolean = false) => {
+    if (isDataAnalysisMode) {
+      if (score >= 90) return { title: "Lead Data Scientist / Scholar (L5/L6)", tier: "Distinguished", color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/25" };
+      if (score >= 75) return { title: "Senior Data Analyst / Student Lead (L4/L5)", tier: "Proficient", color: "text-teal-400", bg: "bg-teal-500/10 border-teal-500/25" };
+      if (score >= 60) return { title: "Mid-Level Student Programmer (L3)", tier: "Moderate", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/25" };
+      return { title: "Developing Analyst / Novice (L2)", tier: "Developing", color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/25" };
+    }
     if (score >= 90) return { title: "Lead Architect Candidate (L5/L6)", tier: "Distinguished", color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/25" };
     if (score >= 75) return { title: "Senior Android Specialist (L4/L5)", tier: "Proficient", color: "text-teal-400", bg: "bg-teal-500/10 border-teal-500/25" };
     if (score >= 60) return { title: "Mid-Level Professional (L3)", tier: "Moderate", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/25" };
     return { title: "Developing Specialist (L2)", tier: "Requires Revision", color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/25" };
   };
 
-  const rank = getSeniorityRank(averageScore);
+  const rank = getSeniorityRank(averageScore, isDataAnalysis);
 
   // Collect all missed concepts for custom curriculum recommendations
   const allMissedConcepts = Array.from(
@@ -324,7 +348,7 @@ export default function Dashboard({ history, difficulty, topic, onRestart }: Das
             const average = roundsOfCat.length > 0 ? Math.round(scoreSum / roundsOfCat.length) : null;
             
             // Get category styling
-            const styles = getCategoryBadgeStyles(cat);
+            const styles = getCategoryBadgeStyles(cat, isDataAnalysis);
             
             return (
               <div 
@@ -412,8 +436,8 @@ export default function Dashboard({ history, difficulty, topic, onRestart }: Das
                           {item.topic}
                         </span>
                         {item.category && (
-                          <span className={`text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded border ${getCategoryBadgeStyles(item.category).bg}`}>
-                            {getCategoryBadgeStyles(item.category).label}
+                          <span className={`text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded border ${getCategoryBadgeStyles(item.category, isDataAnalysis).bg}`}>
+                            {getCategoryBadgeStyles(item.category, isDataAnalysis).label}
                           </span>
                         )}
                       </div>
@@ -609,6 +633,190 @@ export default function Dashboard({ history, difficulty, topic, onRestart }: Das
           })}
         </div>
 
+      </div>
+
+      {/* YOUTUBE STUDIO EXPORT BOX FOR @ONLINE-YOU */}
+      <div className="glass-panel p-6 rounded-3xl mt-12 bg-gradient-to-r from-red-950/20 via-neutral-900 to-red-950/20 border border-red-500/10" id="youtube-export-studio-panel">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-900 pb-4 mb-5">
+          <div className="flex items-center gap-2">
+            <Youtube className="w-5 h-5 text-rose-500 animate-pulse" />
+            <div>
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                @OnlineYou-z3i1n YouTube Creator Studio Export Kit
+              </h3>
+              <p className="text-[10px] text-neutral-400 font-mono mt-0.5">
+                AUTOMATED FOR HIGHEST SEARCH INDEXING & VIEWER ENGAGEMENT
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] uppercase font-mono bg-rose-500/10 text-rose-300 border border-rose-500/20 px-2.5 py-0.5 rounded-full font-bold">
+            Creator Mode Connected
+          </span>
+        </div>
+
+        <p className="text-xs text-neutral-400 max-w-xl leading-relaxed mb-6">
+          Ready to present your session to your viewers? Copy these structured metadata blueprints containing exact score breakdowns, chapter marks, and domain-optimized search strings to simplify upload to <strong className="text-neutral-200">YouTube Studio</strong>!
+        </p>
+
+        <div className="grid grid-cols-1 gap-6">
+          {/* SECTION 1: VIDEO TITLE */}
+          <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-2xl p-4 space-y-2.5 relative">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold font-mono text-rose-400 uppercase tracking-widest">
+                01. Suggested Video Title
+              </span>
+              <button
+                onClick={() => {
+                  const titleText = `I Took a Live ${difficulty} ${topic || "Android"} AI Interview! (Score: ${averageScore}/100) 🚀 @OnlineYou-z3i1n`;
+                  navigator.clipboard.writeText(titleText).then(() => {
+                    setCopiedTitle(true);
+                    setTimeout(() => setCopiedTitle(false), 2000);
+                  });
+                }}
+                className="text-[10px] font-bold font-mono text-neutral-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
+                id="copy-suggested-title-btn"
+              >
+                {copiedTitle ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-rose-400" />
+                    Copy Field
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-850 font-sans text-xs text-neutral-200 select-all tracking-tight font-semibold">
+              I Took a Live {difficulty} {topic || "Android"} AI Interview! (Score: {averageScore}/100) 🚀 @OnlineYou-z3i1n
+            </div>
+          </div>
+
+          {/* SECTION 2: AUTO DESCRIPTION WITH CHAPTER MARKERS */}
+          <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-2xl p-4 space-y-2.5 relative">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold font-mono text-rose-400 uppercase tracking-widest">
+                02. Video Description & Chapter Stamps
+              </span>
+              <button
+                onClick={() => {
+                  const buildStamps = history.map((item, index) => {
+                    const timeOffset = (index + 1) * 3;
+                    const mins = String(timeOffset).padStart(2, '0');
+                    const preview = item.question.length > 50 ? `${item.question.substring(0, 47)}...` : item.question;
+                    return `${mins}:00 - Question ${index + 1}: ${preview} (Score: ${item.evaluation?.score || 0}/100)`;
+                  }).join('\n');
+                  const descText = `Testing my coding bounds and architectural limits in the Android AI Arena sandbox session!
+
+Official Channel: youtube.com/@OnlineYou-z3i1n
+
+📊 SESSION REPORT CARD:
+• Practice Domain: ${topic || "Android Systems"}
+• Target Seniority: ${difficulty} Developer
+• Cumulative Grade: ${averageScore}/100
+
+⏳ VIDEO CHAPTER TIMESTAMPS:
+00:00 - Introduction & Setup Space
+${buildStamps}
+${String((history.length + 1) * 3).padStart(2, '0')}:00 - Final scorecard & Study Curriculum
+
+💡 GAP & REVISION CONCEPTS DETECTED:
+${allMissedConcepts.length > 0 ? allMissedConcepts.map(c => `• ${c}`).join('\n') : '• Outstanding recall! No gaps detected.'}
+
+🔥 CORE STRENGTHS SHOWN:
+${allStrengths.length > 0 ? allStrengths.map(s => `• ${s}`).join('\n') : '• Good effort over all rounds.'}
+
+Try out the AI Arena yourself to train your voice response memory and master Jetpack Compose frameworks! Always support the community at @OnlineYou-z3i1n.
+#AndroidDev #JetpackCompose #AIInterview #CodingPractice #OnlineYou`;
+                  navigator.clipboard.writeText(descText).then(() => {
+                    setCopiedDesc(true);
+                    setTimeout(() => setCopiedDesc(false), 2000);
+                  });
+                }}
+                className="text-[10px] font-bold font-mono text-neutral-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
+                id="copy-suggested-desc-btn"
+              >
+                {copiedDesc ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-rose-400" />
+                    Copy Description
+                  </>
+                )}
+              </button>
+            </div>
+            <pre className="bg-neutral-950 p-3.5 rounded-xl border border-neutral-850 font-mono text-[10px] text-neutral-300 select-all overflow-x-auto max-h-[180px] custom-scrollbar-thin leading-relaxed">
+{`Testing my coding bounds and architectural limits in the Android AI Arena sandbox session!
+
+Official Channel: youtube.com/@OnlineYou-z3i1n
+
+📊 SESSION REPORT CARD:
+• Practice Domain: ${topic || "Android Systems"}
+• Target Seniority: ${difficulty} Developer
+• Cumulative Grade: ${averageScore}/100
+
+⏳ VIDEO CHAPTER TIMESTAMPS:
+00:00 - Introduction & Setup Space
+${history.map((item, index) => {
+  const timeOffset = (index + 1) * 3;
+  const mins = String(timeOffset).padStart(2, '0');
+  const preview = item.question.length > 50 ? `${item.question.substring(0, 47)}...` : item.question;
+  return `${mins}:00 - Question ${index + 1}: ${preview} (Score: ${item.evaluation?.score || 0}/100)`;
+}).join('\n')}
+${String((history.length + 1) * 3).padStart(2, '0')}:00 - Final scorecard & Study Curriculum
+
+💡 GAP & REVISION CONCEPTS DETECTED:
+${allMissedConcepts.length > 0 ? allMissedConcepts.map(c => `• ${c}`).join('\n') : '• Outstanding recall! No gaps detected.'}
+
+🔥 CORE STRENGTHS SHOWN:
+${allStrengths.length > 0 ? allStrengths.map(s => `• ${s}`).join('\n') : '• Good effort over all rounds.'}
+
+Try out the AI Arena yourself to train your voice response memory and master Jetpack Compose frameworks! Always support the community at @OnlineYou-z3i1n.
+#AndroidDev #JetpackCompose #AIInterview #CodingPractice #OnlineYou`}
+            </pre>
+          </div>
+
+          {/* SECTION 3: SUGGESTED TAGS */}
+          <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-2xl p-4 space-y-2.5 relative">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold font-mono text-rose-400 uppercase tracking-widest">
+                03. Suggested Tags For Search Reach
+              </span>
+              <button
+                onClick={() => {
+                  const tagText = `android, jetpack compose, kotlin flow, android tech interview, coding mockup, @OnlineYou-z3i1n, ai arena, android developer interview, study program`;
+                  navigator.clipboard.writeText(tagText).then(() => {
+                    setCopiedTags(true);
+                    setTimeout(() => setCopiedTags(false), 2000);
+                  });
+                }}
+                className="text-[10px] font-bold font-mono text-neutral-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
+                id="copy-suggested-tags-btn"
+              >
+                {copiedTags ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-rose-400" />
+                    Copy Tags
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-850 font-mono text-[10px] text-neutral-300 select-all leading-normal">
+              android, jetpack compose, kotlin flow, android tech interview, coding mockup, @OnlineYou-z3i1n, ai arena, android developer interview, study program
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* INDIVIDUALIZED TRAINING CURRICULUM BLUEPRINT */}

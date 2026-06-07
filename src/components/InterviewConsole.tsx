@@ -23,8 +23,9 @@ import {
 } from "lucide-react";
 import AudioVisualizer from "./AudioVisualizer";
 import ReactMarkdown from "react-markdown";
+import { persistInterviewSession } from "../services/firebaseService";
 
-const getCategoryBadgeStyles = (category: string) => {
+const getCategoryBadgeStyles = (category: string, isDataAnalysis: boolean = false) => {
   switch (category) {
     case "Behavioral":
       return { bg: "bg-blue-500/10 text-blue-300 border-blue-500/20", label: "Behavioral" };
@@ -33,9 +34,9 @@ const getCategoryBadgeStyles = (category: string) => {
     case "Situational":
       return { bg: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", label: "Situational" };
     case "Role-Specific":
-      return { bg: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Role-Specific" };
+      return { bg: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: isDataAnalysis ? "Domain-Specific" : "Role-Specific" };
     default:
-      return { bg: "bg-teal-500/10 text-teal-300 border-teal-500/20", label: "Android Specific" };
+      return { bg: "bg-teal-500/10 text-teal-300 border-teal-500/20", label: isDataAnalysis ? "Data-Science Specific" : "Android Specific" };
   }
 };
 
@@ -45,6 +46,14 @@ interface InterviewConsoleProps {
   interviewer: Interviewer;
   roundsCount: number;
   onSessionComplete: (finalHistory: RoundHistoryItem[]) => void;
+  userId: string | null;
+  sessionId: string;
+  syncDraftText?: (text: string) => void;
+  syncActiveQuestion?: (questionData: any, currentRound: number, status: string) => void;
+  syncStatusAndHistory?: (status: string, history: any[]) => void;
+  liveReactions?: { id: string; symbol: string; sender: string }[];
+  liveHint?: { text: string; sender: string; timestamp: Date } | null;
+  clearLiveHint?: () => void;
 }
 
 export default function InterviewConsole({
@@ -53,10 +62,24 @@ export default function InterviewConsole({
   interviewer,
   roundsCount,
   onSessionComplete,
+  userId,
+  sessionId,
+  syncDraftText,
+  syncActiveQuestion,
+  syncStatusAndHistory,
+  liveReactions = [],
+  liveHint = null,
+  clearLiveHint,
 }: InterviewConsoleProps) {
+  const isDataAnalysis = topic && topic.toLowerCase().includes("data analysis");
+
   // Session round state
   const [currentRound, setCurrentRound] = useState<number>(1);
   const [sessionHistory, setSessionHistory] = useState<RoundHistoryItem[]>([]);
+
+  // Navigation caching states
+  const [questionsByRound, setQuestionsByRound] = useState<Record<number, GeneratedQuestion>>({});
+  const [draftsByRound, setDraftsByRound] = useState<Record<number, string>>({});
 
   // API Call states
   const [questionLoading, setQuestionLoading] = useState<boolean>(true);
@@ -148,6 +171,12 @@ export default function InterviewConsole({
       const data = await response.json();
       setCurrentQuestion(data);
       
+      // Save to questions cache
+      setQuestionsByRound(prev => ({
+        ...prev,
+        [currentRound]: data
+      }));
+
       // Speak out loud!
       triggerTTS(data.question);
     } catch (err: any) {
@@ -158,15 +187,82 @@ export default function InterviewConsole({
     }
   };
 
+  const activeRound = Math.min(roundsCount, sessionHistory.length + 1);
+  const isGradedRound = sessionHistory.some(h => h.roundNumber === currentRound);
+
   // Trigger question loop on mount and round transition
   useEffect(() => {
-    generateNextQuestion();
+    const savedItem = sessionHistory.find(h => h.roundNumber === currentRound);
+
+    if (savedItem) {
+      // Load completed round (Read-Only Review Mode)
+      setCurrentQuestion({
+        question: savedItem.question,
+        hint: "Completed round. Feedback scorecard is displayed below.",
+        category: savedItem.category,
+        expectedKeywords: []
+      });
+      setCurrentEvaluation(savedItem.evaluation);
+      setCandidateResponseText(savedItem.candidateAnswer);
+      setInterimText("");
+      setQuestionLoading(false);
+      setErrorPayload(null);
+    } else if (questionsByRound[currentRound]) {
+      // Load pre-generated question and draft text
+      setCurrentQuestion(questionsByRound[currentRound]);
+      setCurrentEvaluation(null);
+      setCandidateResponseText(draftsByRound[currentRound] || "");
+      setInterimText("");
+      setQuestionLoading(false);
+      setErrorPayload(null);
+    } else {
+      // Need to generate fresh
+      generateNextQuestion();
+    }
+
     return () => {
       if (synthRef.current) {
         synthRef.current.cancel();
       }
     };
   }, [currentRound]);
+
+  // Real-time synchronization of candidate's active drafting
+  useEffect(() => {
+    if (syncDraftText) {
+      syncDraftText(candidateResponseText);
+    }
+  }, [candidateResponseText, syncDraftText]);
+
+  // Real-time synchronization of newly generated questions
+  useEffect(() => {
+    if (syncActiveQuestion && currentQuestion) {
+      syncActiveQuestion(currentQuestion, currentRound, "INTERVIEWING");
+    }
+  }, [currentQuestion, currentRound, syncActiveQuestion]);
+
+  // Real-time synchronization of historic scorecard outputs
+  useEffect(() => {
+    if (syncStatusAndHistory) {
+      syncStatusAndHistory("INTERVIEWING", sessionHistory);
+    }
+  }, [sessionHistory, syncStatusAndHistory]);
+
+  // Handle round selection via index navigation
+  const handleSelectRound = (roundNum: number) => {
+    if (roundNum > activeRound) return; // Locked future questions
+
+    // Save current active draft if switching away from the active unsubmitted round
+    const mockIsFinished = sessionHistory.some(h => h.roundNumber === currentRound);
+    if (!mockIsFinished && !currentEvaluation) {
+      setDraftsByRound(prev => ({
+        ...prev,
+        [currentRound]: candidateResponseText
+      }));
+    }
+
+    setCurrentRound(roundNum);
+  };
 
   // Handle Speech Recognition triggers
   const executeToggleRecording = () => {
@@ -305,7 +401,24 @@ export default function InterviewConsole({
         timestamp: new Date().toISOString()
       };
 
-      setSessionHistory(prev => [...prev, newRoundHistory]);
+      const finalHistoryList = [...sessionHistory, newRoundHistory];
+      setSessionHistory(finalHistoryList);
+
+      // Persist progress to Cloud Firestore database automatically
+      if (userId && sessionId) {
+        persistInterviewSession({
+          id: sessionId,
+          difficulty,
+          topic,
+          interviewerId: interviewer.id,
+          roundsCount: roundsCount,
+          status: "INTERVIEWING",
+          currentRoundIndex: currentRound,
+          history: finalHistoryList
+        }, userId).catch(err => {
+          console.error("Cloud background sync failed:", err);
+        });
+      }
 
     } catch (err: any) {
       console.error(err);
@@ -325,7 +438,132 @@ export default function InterviewConsole({
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4 grid grid-cols-1 md:grid-cols-3 gap-6" id="interview-console-root">
+    <div className="max-w-4xl mx-auto py-6 px-4 grid grid-cols-1 md:grid-cols-3 gap-6 relative" id="interview-console-root">
+      
+      {/* Floating Reactions Overlay */}
+      <div className="fixed bottom-10 right-10 pointer-events-none z-50 flex flex-col gap-2">
+        {liveReactions.map((rx) => (
+          <div
+            key={rx.id}
+            className="flex items-center gap-1.5 bg-neutral-900/95 border border-teal-500/30 text-white px-3 py-1.5 rounded-full text-xs shadow-lg animate-bounce font-mono"
+          >
+            <span className="text-base">{rx.symbol}</span>
+            <span>{rx.sender} reacted</span>
+          </div>
+        ))}
+      </div>
+
+      {/* WEBSOCKET LIVE STATUS BAR */}
+      {syncDraftText && (
+        <div className="col-span-full bg-teal-950/20 border border-teal-500/20 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in" id="interview-websocket-gimmick">
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-teal-400 animate-ping shrink-0" />
+            <div>
+              <h4 className="text-xs font-bold text-teal-300 font-mono uppercase tracking-widest leading-none flex items-center gap-1.5">
+                Live Joint Broadcast Active
+              </h4>
+              <p className="text-[11px] text-neutral-400 mt-1">
+                Typewriter keystrokes, active round prompts, and evaluations are synced in real-time.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+            <div className="text-[10px] text-neutral-400 font-mono">
+              Room Code: <strong className="text-white px-2 py-1 bg-neutral-900 rounded font-mono select-all tracking-wider text-xs border border-neutral-800">{sessionId}</strong>
+            </div>
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}${window.location.pathname}?roomId=${sessionId}`;
+                navigator.clipboard.writeText(url).then(() => {
+                  alert("Co-interview invite link copied to clipboard!");
+                });
+              }}
+              className="bg-neutral-900 hover:bg-neutral-850 text-neutral-200 text-[10px] px-3 py-1.5 rounded-xl font-mono uppercase border border-neutral-800 hover:border-teal-500/40 cursor-pointer transition-all flex items-center gap-1.5 shrink-0"
+            >
+              Copy link
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* LIVE PEER HOLOGRAPHIC HINT BANNER */}
+      {liveHint && (
+        <div className="col-span-full bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl flex items-start gap-3 relative animate-pulse" id="peer-live-hint-banner">
+          <span className="text-2xl mt-0.5">💡</span>
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-amber-400 font-mono font-bold">
+                Live Guidance from {liveHint.sender}
+              </span>
+              {clearLiveHint && (
+                <button 
+                  onClick={clearLiveHint}
+                  className="text-neutral-500 hover:text-neutral-300 text-xs font-mono cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-neutral-200 mt-1 leading-relaxed">
+              "{liveHint.text}"
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* UPPER INDEX NAVIGATION PROGRESS COMPONENT */}
+      <div className="col-span-full bg-neutral-900/40 border border-neutral-900 rounded-2xl p-4 mb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4" id="session-index-navigation-bar">
+        <div className="space-y-1">
+          <h3 className="text-xs font-bold text-teal-400 font-mono tracking-wider uppercase flex items-center gap-1.5">
+            <Cpu className="w-3.5 h-3.5 text-teal-500" />
+            Session Index & Navigation Tracker
+          </h3>
+          <p className="text-[11px] text-neutral-500 leading-none">
+            Jump back to review graded answers, or click the pulsing node to continue the active session.
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-2 flex-wrap">
+          {Array.from({ length: roundsCount }).map((_, idx) => {
+            const roundNum = idx + 1;
+            const isHistory = sessionHistory.some(h => h.roundNumber === roundNum);
+            const isActive = currentRound === roundNum;
+            const isLocked = roundNum > activeRound;
+            const isSelectedActive = roundNum === activeRound;
+
+            let statusBg = "bg-neutral-950 border-neutral-900 text-neutral-600 cursor-not-allowed";
+
+            if (isHistory) {
+              statusBg = isActive
+                ? "bg-teal-500/20 border-teal-500 text-teal-300 ring-1 ring-teal-500/20 font-bold"
+                : "bg-emerald-950/40 border-emerald-900 text-emerald-400 hover:bg-emerald-950/60 font-semibold cursor-pointer";
+            } else if (!isLocked) {
+              statusBg = isActive
+                ? "bg-teal-500 text-neutral-950 border-teal-400 font-bold shadow-[0_0_12px_rgba(20,184,166,0.3)] animate-pulse"
+                : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-850 cursor-pointer";
+            }
+
+            return (
+              <button
+                key={roundNum}
+                onClick={() => handleSelectRound(roundNum)}
+                disabled={isLocked}
+                className={`px-3 py-1.5 rounded-lg border text-xs tracking-wide transition-all duration-200 flex items-center gap-1.5 ${statusBg}`}
+                title={isLocked ? "Complete previous questions first to generate the next context" : `Navigate to Question ${roundNum}`}
+                id={`index-nav-step-${roundNum}`}
+              >
+                <span className="font-mono text-[10px]">Q{roundNum}</span>
+                {isHistory ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                ) : isSelectedActive && !isActive ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping" />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       
       {/* LEFT COLUMN: INTERVIEWER CONTEXT & PORTRAIT */}
       <div className="md:col-span-1 space-y-4" id="interviewer-portrait-section">
@@ -392,8 +630,8 @@ export default function InterviewConsole({
               Question {currentRound} of {roundsCount}
             </span>
             {currentQuestion?.category && (
-              <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${getCategoryBadgeStyles(currentQuestion.category).bg}`}>
-                {getCategoryBadgeStyles(currentQuestion.category).label} Question
+              <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${getCategoryBadgeStyles(currentQuestion.category, isDataAnalysis).bg}`}>
+                {getCategoryBadgeStyles(currentQuestion.category, isDataAnalysis).label} Question
               </span>
             )}
           </div>
@@ -449,136 +687,160 @@ export default function InterviewConsole({
         {currentQuestion && !questionLoading && (
           <div className="space-y-4">
             
-            {/* SPEECH AND TEXT TOGGLE SWITCH */}
-            <div className="flex justify-between items-center bg-neutral-900/40 border border-neutral-900 p-1 rounded-xl" id="input-mode-switcher">
-              <button
-                onClick={() => setUseTextInput(false)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  !useTextInput ? "bg-neutral-800 text-teal-300" : "text-neutral-400 hover:text-neutral-200"
-                }`}
-              >
-                <Mic className="w-3.5 h-3.5" />
-                Live Speech Recorder
-              </button>
-              <button
-                onClick={() => setUseTextInput(true)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  useTextInput ? "bg-neutral-800 text-teal-300" : "text-neutral-400 hover:text-neutral-200"
-                }`}
-              >
-                <Keyboard className="w-3.5 h-3.5" />
-                Keyboard Console Fallback
-              </button>
-            </div>
+            {isGradedRound ? (
+              <div className="glass-panel p-5 rounded-2xl border border-neutral-900 bg-neutral-950/50 space-y-2 relative overflow-hidden" id="reviewed-submission-capsule">
+                <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+                <div className="flex items-center justify-between text-[11px] text-emerald-400 font-mono tracking-wider uppercase font-extrabold">
+                  <span>✓ Answer Submitted & Evaluated</span>
+                  <span className="text-[10px] text-neutral-500 font-normal">Round {currentRound} Review Mode</span>
+                </div>
+                <p className="text-xs text-neutral-200 bg-neutral-900/60 p-3.5 rounded-xl border border-neutral-800/60 font-mono leading-relaxed whitespace-pre-wrap select-text">
+                  "{candidateResponseText || "No response text found."}"
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* SPEECH AND TEXT TOGGLE SWITCH */}
+                <div className="flex justify-between items-center bg-neutral-900/40 border border-neutral-900 p-1 rounded-xl" id="input-mode-switcher">
+                  <button
+                    onClick={() => setUseTextInput(false)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      !useTextInput ? "bg-neutral-800 text-teal-300" : "text-neutral-400 hover:text-neutral-200"
+                    }`}
+                  >
+                    <Mic className="w-3.5 h-3.5" />
+                    Live Speech Recorder
+                  </button>
+                  <button
+                    onClick={() => setUseTextInput(true)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      useTextInput ? "bg-neutral-800 text-teal-300" : "text-neutral-400 hover:text-neutral-200"
+                    }`}
+                  >
+                    <Keyboard className="w-3.5 h-3.5" />
+                    Keyboard Console Fallback
+                  </button>
+                </div>
 
-            {/* SPEECH AUDIO CONTROLS PANEL */}
-            {!useTextInput ? (
-              <div className="glass-panel p-5 rounded-2xl flex flex-col items-center justify-center min-h-[160px] text-center space-y-4 relative overflow-hidden" id="speech-waveform-monitor">
-                {/* Visual equalizer lines */}
-                <AudioVisualizer isRecording={isRecording} color={interviewer.id === "sia" ? "teal" : interviewer.id === "devon" ? "blue" : "amber"} />
+                {/* SPEECH AUDIO CONTROLS PANEL */}
+                {!useTextInput ? (
+                  <div className="glass-panel p-5 rounded-2xl flex flex-col items-center justify-center min-h-[160px] text-center space-y-4 relative overflow-hidden" id="speech-waveform-monitor">
+                    {/* Visual equalizer lines */}
+                    <AudioVisualizer isRecording={isRecording} color={interviewer.id === "sia" ? "teal" : interviewer.id === "devon" ? "blue" : "amber"} />
 
-                {!isSpeechSupported ? (
-                  <div className="p-3 border border-amber-500/25 bg-amber-500/10 rounded-xl space-y-1.5 text-xs text-amber-300 text-left">
-                    <span className="font-extrabold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Speech API not supported</span>
-                    <p className="text-neutral-300 leading-normal">
-                      Your browser does not fully support live speech-to-text. Please select the <strong className="text-white">Keyboard Console Fallback</strong> mode above to answer questions.
-                    </p>
+                    {!isSpeechSupported ? (
+                      <div className="p-3 border border-amber-500/25 bg-amber-500/10 rounded-xl space-y-1.5 text-xs text-amber-300 text-left">
+                        <span className="font-extrabold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Speech API not supported</span>
+                        <p className="text-neutral-300 leading-normal">
+                          Your browser does not fully support live speech-to-text. Please select the <strong className="text-white">Keyboard Console Fallback</strong> mode above to answer questions.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4 w-full">
+                        <div className="flex justify-center">
+                          <button
+                            id="recording-switch-btn"
+                            onClick={executeToggleRecording}
+                            className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
+                              isRecording 
+                                ? "bg-red-500/20 border-2 border-red-500 text-red-500 animate-pulse outline outline-4 outline-red-500/10" 
+                                : "bg-teal-500 hover:bg-teal-400 text-neutral-950 font-bold hover:shadow-[0_0_15px_rgba(20,184,166,0.3)] shadow-lg"
+                            } cursor-pointer`}
+                          >
+                            {isRecording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                          </button>
+                        </div>
+                        <div className="text-xs">
+                          {isRecording ? (
+                            <span className="text-red-400 font-bold animate-pulse">Speak now. Listening to your details...</span>
+                          ) : (
+                            <span className="text-neutral-400">Click the microphone button to start speaking. Click again to pause.</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="space-y-4 w-full">
-                    <div className="flex justify-center">
+                  /* KEYBOARD TERMINAL INPUT BOX */
+                  <div className="space-y-2" id="text-editor-container">
+                    <textarea
+                      id="text-answers-input"
+                      className="w-full h-32 bg-neutral-900 border border-neutral-800 focus:border-teal-500/50 rounded-xl p-4 text-xs text-neutral-200 placeholder-neutral-600 focus:ring-1 focus:ring-teal-500/30 font-sans leading-relaxed resize-none transition-all outline-none"
+                      placeholder={isDataAnalysis ? "Type your complete student data analysis code or logic here. Mention Python, Pandas, Matplotlib, SQL..." : "Type your complete, highly detailed Android solution here. Use technical terms..."}
+                      value={candidateResponseText}
+                      onChange={(e) => {
+                        const text = e.target.value;
+                        setCandidateResponseText(text);
+                        if (currentRound === activeRound && !currentEvaluation) {
+                          setDraftsByRound(prev => ({
+                            ...prev,
+                            [currentRound]: text
+                          }));
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* REAL-TIME ACCUMULATING SPEECH TRANSCRIPTION BIND */}
+                {!useTextInput && (candidateResponseText || interimText) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-neutral-400 uppercase font-mono tracking-wider font-semibold">
+                        Real-Time Transcription Draft:
+                      </span>
                       <button
-                        id="recording-switch-btn"
-                        onClick={executeToggleRecording}
-                        className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
-                          isRecording 
-                            ? "bg-red-500/20 border-2 border-red-500 text-red-500 animate-pulse outline outline-4 outline-red-500/10" 
-                            : "bg-teal-500 hover:bg-teal-400 text-neutral-950 font-bold hover:shadow-[0_0_15px_rgba(20,184,166,0.3)] shadow-lg"
-                        } cursor-pointer`}
+                        onClick={() => {
+                          setCandidateResponseText("");
+                          setInterimText("");
+                        }}
+                        className="text-[10px] text-neutral-500 hover:text-neutral-300 font-bold"
                       >
-                        {isRecording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                        Clear Text
                       </button>
                     </div>
-                    <div className="text-xs">
-                      {isRecording ? (
-                        <span className="text-red-400 font-bold animate-pulse">Speak now. Listening to your details...</span>
-                      ) : (
-                        <span className="text-neutral-400">Click the microphone button to start speaking. Click again to pause.</span>
-                      )}
+                    <div 
+                      id="live-transcription-draft"
+                      className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl p-4 min-h-[80px] max-h-[140px] overflow-y-auto custom-scrollbar-thin text-xs leading-relaxed text-neutral-300 whitespace-pre-wrap font-sans"
+                    >
+                      <span>{candidateResponseText}</span>
+                      {interimText && <span className="text-teal-400/80 italic bg-teal-950/20 px-0.5">{interimText}</span>}
                     </div>
                   </div>
                 )}
-              </div>
-            ) : (
-              /* KEYBOARD TERMINAL INPUT BOX */
-              <div className="space-y-2" id="text-editor-container">
-                <textarea
-                  id="text-answers-input"
-                  className="w-full h-32 bg-neutral-900 border border-neutral-800 focus:border-teal-500/50 rounded-xl p-4 text-xs text-neutral-200 placeholder-neutral-600 focus:ring-1 focus:ring-teal-500/30 font-sans leading-relaxed resize-none transition-all outline-none"
-                  placeholder="Type your complete, highly detailed Android solution here. Use technical terms..."
-                  value={candidateResponseText}
-                  onChange={(e) => setCandidateResponseText(e.target.value)}
-                />
-              </div>
-            )}
 
-            {/* REAL-TIME ACCUMULATING SPEECH TRANSCRIPTION BIND */}
-            {!useTextInput && (candidateResponseText || interimText) && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-neutral-400 uppercase font-mono tracking-wider font-semibold">
-                    Real-Time Transcription Draft:
-                  </span>
-                  <button
-                    onClick={() => {
-                      setCandidateResponseText("");
-                      setInterimText("");
-                    }}
-                    className="text-[10px] text-neutral-500 hover:text-neutral-300 font-bold"
-                  >
-                    Clear Text
-                  </button>
-                </div>
-                <div 
-                  id="live-transcription-draft"
-                  className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl p-4 min-h-[80px] max-h-[140px] overflow-y-auto custom-scrollbar-thin text-xs leading-relaxed text-neutral-300 whitespace-pre-wrap font-sans"
-                >
-                  <span>{candidateResponseText}</span>
-                  {interimText && <span className="text-teal-400/80 italic bg-teal-950/20 px-0.5">{interimText}</span>}
-                </div>
-              </div>
-            )}
+                {/* EXPLICIT SUBMIT TO AI DIAGNOSIS INTERFACE */}
+                {!currentEvaluation && (
+                  <div className="pt-3 flex justify-end">
+                    <button
+                      id="evaluate-submission-btn"
+                      onClick={submitAnswerForEvaluation}
+                      disabled={isEvaluating || (!candidateResponseText.trim() && !interimText.trim())}
+                      className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 disabled:from-neutral-800 disabled:to-neutral-800 text-neutral-950 disabled:text-neutral-500 font-extrabold py-3 px-5 rounded-xl cursor-pointer shadow-lg hover:shadow-teal-500/10 transition-all text-xs flex items-center gap-1.5"
+                    >
+                      {isEvaluating ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>{encouragingMsg}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Submit Answer for Instant AI Feedback
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
 
-            {/* EXPLICIT SUBMIT TO AI DIAGNOSIS INTERFACE */}
-            {!currentEvaluation && (
-              <div className="pt-3 flex justify-end">
-                <button
-                  id="evaluate-submission-btn"
-                  onClick={submitAnswerForEvaluation}
-                  disabled={isEvaluating || (!candidateResponseText.trim() && !interimText.trim())}
-                  className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 disabled:from-neutral-800 disabled:to-neutral-800 text-neutral-950 disabled:text-neutral-500 font-extrabold py-3 px-5 rounded-xl cursor-pointer shadow-lg hover:shadow-teal-500/10 transition-all text-xs flex items-center gap-1.5"
-                >
-                  {isEvaluating ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>{encouragingMsg}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Submit Answer for Instant AI Feedback
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-
-            {/* ERRROR CALLOUT IN INTERACTION BAR */}
-            {errorPayload && (
-              <div className="p-3 bg-red-500/10 border border-red-500/25 text-red-400 text-xs rounded-xl mt-3 flex items-start gap-2 animate-fade-in">
-                <AlertTriangle className="w-4.5 h-4.5 shrink-0 mt-0.5" />
-                <span>{errorPayload}</span>
-              </div>
+                {/* ERRROR CALLOUT IN INTERACTION BAR */}
+                {errorPayload && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/25 text-red-400 text-xs rounded-xl mt-3 flex items-start gap-2 animate-fade-in">
+                    <AlertTriangle className="w-4.5 h-4.5 shrink-0 mt-0.5" />
+                    <span>{errorPayload}</span>
+                  </div>
+                )}
+              </>
             )}
 
             {/* INSTANT DIAGNOSTIC FEEDBACK REPORT PANEL */}

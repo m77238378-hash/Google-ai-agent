@@ -1,0 +1,107 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default-Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- REUSABLE SECURITY PRIMITIVES ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true || 
+        request.auth.token.email_verified == "true" ||
+        request.auth.token.firebase.sign_in_provider == "google.com"
+      );
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- USER PROFILE VALIDATION ---
+    function isValidUser(data) {
+      return data.uid == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() <= 200
+        && data.email == request.auth.token.email
+        && (data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 2048));
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isOwner(userId);
+      allow list: if false; // PII Isolation: Block listing of user data
+      
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidUser(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+        
+      allow update: if isVerifiedUser()
+        && isOwner(userId)
+        && isValidUser(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    // --- INTERVIEW SESSION VALIDATION ---
+    function isValidSession(data) {
+      return data.id is string
+        && data.id.size() <= 128
+        && data.userId == request.auth.uid
+        && data.topic is string
+        && data.topic.size() <= 200
+        && (data.difficulty == 'Junior' || data.difficulty == 'Mid-Level' || data.difficulty == 'Senior')
+        && data.interviewerId is string
+        && data.interviewerId.size() <= 64
+        && (data.roundsCount is int || data.roundsCount is float)
+        && data.roundsCount >= 1
+        && data.roundsCount <= 10
+        && (data.status == 'SETUP' || data.status == 'INTERVIEWING' || data.status == 'EVALUATING' || data.status == 'COMPLETED')
+        && data.history is list
+        && data.history.size() <= 10;
+    }
+
+    match /sessions/{sessionId} {
+      // General gets & secure list queries checking resource.data to prevent scraping
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isVerifiedUser()
+        && isValidId(sessionId)
+        && request.resource.data.userId == request.auth.uid
+        && isValidSession(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && isValidSession(request.resource.data)
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.topic == resource.data.topic
+        && request.resource.data.difficulty == resource.data.difficulty
+        && request.resource.data.interviewerId == resource.data.interviewerId
+        && request.resource.data.roundsCount == resource.data.roundsCount
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+  }
+}
